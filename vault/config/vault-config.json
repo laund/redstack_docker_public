@@ -1,0 +1,16 @@
+{
+    "backend": {
+      "consul": {
+        "address": "consul-server-1:8500",
+        "token": "<SecretID>",
+        "path": "vault/"
+      }
+    },
+    "listener": {
+      "tcp":{
+        "address": "0.0.0.0:8200",
+        "tls_disable": 1
+      }
+    },
+    "ui": true
+  }

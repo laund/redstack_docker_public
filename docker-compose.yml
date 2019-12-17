@@ -1,0 +1,285 @@
+version: '3.7'
+
+services:
+  consul-server-1:
+    build:
+      context: ./
+      dockerfile: ./consul/consul-image/Dockerfile
+    volumes:
+      - ./consul/consul-server-01:/etc/consul.d
+    hostname: consul-server-01
+    command: consul agent -bind 0.0.0.0 -client 0.0.0.0 --config-file /etc/consul.d/default.hcl
+    restart: always
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.2
+
+  vault:
+    build:
+      context: ./vault
+      dockerfile: Dockerfile
+    ports:
+      - 8200:8200
+    volumes:
+      - ./vault/config:/vault/config
+      - ./vault/policies:/vault/policies
+      - ./vault/data:/vault/data
+      - ./vault/logs:/vault/logs
+    environment:
+      - VAULT_ADDR=http://127.0.0.1:8200
+    command: server -config=/vault/config/vault-config.json
+    cap_add:
+      - IPC_LOCK
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.5
+    depends_on:
+      - consul-server-1
+
+  rabbitmq-server-1:
+    build:
+      context: ./rabbitmq
+      dockerfile: Dockerfile
+    volumes:
+      - ./rabbitmq/data-server-01:/var/lib/rabbitmq/mnesias
+    ports:
+      - 5672:5672
+      - 15672:15672
+    environment:
+      - AUTOCLUSTER_TYPE=consul
+      - CONSUL_HOST=consul-server-1
+      - CONSUL_PORT=8500
+      - CONSUL_HTTP_TOKEN=<SecretID>
+      - CONSUL_SVC=rabbitmq
+      - CONSUL_SVC_ADDR_AUTO=true
+      - AUTOCLUSTER_CLEANUP=true
+      - CLEANUP_WARN_ONLY=false
+      - RABBITMQ_ERLANG_COOKIE=secrect
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.6
+    depends_on:
+      - consul-server-1
+
+  rabbitmq-server-2:
+    build:
+      context: ./rabbitmq
+      dockerfile: Dockerfile
+    volumes:
+      - ./rabbitmq/data-server-02:/var/lib/rabbitmq/mnesias
+    environment:
+      - AUTOCLUSTER_TYPE=consul
+      - CONSUL_HOST=consul-server-1
+      - CONSUL_PORT=8500
+      - CONSUL_HTTP_TOKEN=<SecretID>
+      - CONSUL_SVC=rabbitmq
+      - CONSUL_SVC_ADDR_AUTO=true
+      - AUTOCLUSTER_CLEANUP=true
+      - CLEANUP_WARN_ONLY=false
+      - RABBITMQ_ERLANG_COOKIE=secrect
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.7
+    depends_on:
+      - rabbitmq-server-1
+      - consul-server-1
+
+  rabbitmq-server-3:
+    build:
+      context: ./rabbitmq
+      dockerfile: Dockerfile
+    volumes:
+      - ./rabbitmq/data-server-03:/var/lib/rabbitmq/mnesias
+    environment:
+      - AUTOCLUSTER_TYPE=consul
+      - CONSUL_HOST=consul-server-1
+      - CONSUL_PORT=8500
+      - CONSUL_HTTP_TOKEN=<SecretID>
+      - CONSUL_SVC=rabbitmq
+      - CONSUL_SVC_ADDR_AUTO=true
+      - AUTOCLUSTER_CLEANUP=true
+      - CLEANUP_WARN_ONLY=false
+      - RABBITMQ_ERLANG_COOKIE=secrect
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.8
+    depends_on:
+      - rabbitmq-server-1
+      - consul-server-1
+
+  cassandra-server-1:
+    build:
+      context: ./cassandra
+      dockerfile: Dockerfile
+    command: bash -c 'if [ -z "$$(ls -A /var/lib/cassandra/)" ] ; then sleep 1; fi && /docker-entrypoint.sh cassandra -f'
+    volumes:
+      - ./cassandra/n1data:/var/lib/cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=dev_cluster
+      - CASSANDRA_SEEDS=cassandra-server-1
+      - MAX_HEAP_SIZE=1G
+      - HEAP_NEWSIZE=1G
+    ports:
+      - 7000:7000
+      - 7001:7001
+      - 7199:7199
+      - 9042:9042
+      - 9160:9160
+    ulimits:
+      memlock: -1
+      nproc: 32768
+      nofile: 100000
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.9
+
+  cassandra-server-2:
+    build:
+      context: ./cassandra
+      dockerfile: Dockerfile
+    command: bash -c 'if [ -z "$$(ls -A /var/lib/cassandra/)" ] ; then sleep 1; fi && /docker-entrypoint.sh cassandra -f'
+    volumes:
+      - ./cassandra/n2data:/var/lib/cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=dev_cluster
+      - CASSANDRA_SEEDS=cassandra-server-1
+      - MAX_HEAP_SIZE=1G
+      - HEAP_NEWSIZE=1G
+    ports:
+      - 7000
+      - 7001
+      - 7199
+      - 9042
+      - 9160
+    ulimits:
+      memlock: -1
+      nproc: 32768
+      nofile: 100000
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.10
+    depends_on:
+      - cassandra-server-1
+
+  cassandra-server-3:
+    build:
+      context: ./cassandra
+      dockerfile: Dockerfile
+    command: bash -c 'if [ -z "$$(ls -A /var/lib/cassandra/)" ] ; then sleep 1; fi && /docker-entrypoint.sh cassandra -f'
+    volumes:
+      - ./cassandra/n3data:/var/lib/cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=dev_cluster
+      - CASSANDRA_SEEDS=cassandra-server-1
+      - MAX_HEAP_SIZE=1G
+      - HEAP_NEWSIZE=1G
+    ports:
+      - 7000
+      - 7001
+      - 7199
+      - 9042
+      - 9160
+    ulimits:
+      memlock: -1
+      nproc: 32768
+      nofile: 100000
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.11
+    depends_on:
+      - cassandra-server-1
+
+  wazuh:
+    build:
+      context: ./wazuh-stack/wazuh
+      dockerfile: Dockerfile
+    hostname: wazuh-manager
+    restart: always
+    ports:
+      - 1514:1514/udp
+      - 1515:1515
+      - 514:514/udp
+      - 55000:55000
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.12
+
+  elasticsearch:
+    build:
+      context: ./wazuh-stack/elasticsearch
+      dockerfile: Dockerfile
+    hostname: elasticsearch
+    restart: always
+    ports:
+      - "9200:9200"
+    environment:
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - ELASTIC_CLUSTER=true
+      - CLUSTER_NODE_MASTER=true
+      - CLUSTER_MASTER_NODE_NAME=es01
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.13
+
+  kibana:
+    build:
+      context: ./wazuh-stack/kibana
+      dockerfile: Dockerfile
+    hostname: kibana
+    restart: always
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.14
+    depends_on:
+      - elasticsearch
+    links:
+      - elasticsearch:elasticsearch
+      - wazuh:wazuh
+
+  nginx:
+    build:
+      context: ./wazuh-stack/nginx
+      dockerfile: Dockerfile
+    hostname: nginx
+    restart: always
+    environment:
+      - NGINX_PORT=443
+      - NGINX_CREDENTIALS
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.15
+    depends_on:
+      - kibana
+    links:
+      - kibana:kibana
+
+  syslog-ng:
+    build:
+      context: ./syslog/syslog-ng
+      dockerfile: Dockerfile
+    hostname: srv-logger
+    restart: always
+    ports:
+      - 514:514
+      - 601:601
+      - 6514:6514
+    volumes:
+      - "./syslog/logs:/var/log/syslog-ng"
+      - "./syslog/socket:/var/run/syslog-ng"
+    networks:
+      lab_net:
+        ipv4_address: 10.5.0.3
+
+networks:
+  lab_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
